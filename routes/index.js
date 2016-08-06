@@ -29,16 +29,13 @@ router.get('/56top', function(req, res, next) {
                     if (!!item) temp.push(item.replace(/(^\s+)|(\s+$)/g,""));
                 })
                 info = temp.splice(0,4);
-
                 content.info = {
                     mobilephone: info[0],
                     telphone: info[2],
                     fax: info[3],
                 };
-
                 dataList.push(content);
             }
-
             res.send({ res: dataList});
         }
     })

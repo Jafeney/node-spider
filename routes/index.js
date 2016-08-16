@@ -1,56 +1,24 @@
+/**
+ * @desc 项目的路由
+ * @author Jafeney
+ * @datetime 2016-08-06
+ **/
+
+// 依赖的 node 模块
 var express = require('express'),
-    request = require('request'),
-    cheerio = require('cheerio'),
-    iconv = require('iconv-lite'),
     fs = require('fs'),
-    install = require('superagent-charset'),
-    _request = require('superagent');
+    _ = require('./util'),
+    router = express.Router();
 
-const IC98_PATH = './data/ic98.json';
-const RELDATA_PATH = './data/relData.json';
-const COPY_PATH = './data/copy.json';
-var timeout_init = 0, ic98_length=JSON.parse(fs.readFileSync(IC98_PATH)).length;
-var router = express.Router();
+// 任务
+var task58 = require('./tasks/58'),
+    task56Top = require('./tasks/56top'),
+    taskIC98 = require('./tasks/ic98');
 
-var pad = function (number, length, pos) {
-	var str = "%" + number;
-	while (str.length < length) {
-		//向右边补0
-		if ("r" == pos) {
-			str = str + "0";
-		} else {
-			str = "0" + str;
-		}
-	}
-	return str;
-}
-
-var toHex = function (chr, padLen) {
-	if (null == padLen) {
-		padLen = 2;
-	}
-	return pad(chr.toString(16), padLen);
-}
-
-function chinese2Gb2312(data) {
-	var gb2312 = iconv.encode(data.toString('UCS2'), 'GB2312');
-	var gb2312Hex = "";
-	for (var i = 0; i < gb2312.length; ++i) {
-		gb2312Hex += toHex(gb2312[i]);
-	}
-	return gb2312Hex.toUpperCase();
-}
-
-function unique(arr) {
-    var result = [], flag = [];
-    arr.forEach((item) => {
-        if (!flag.includes(item.company)) {
-            result.push(item);
-            flag.push(item.company);
-        }
-    });
-    return result;
-}
+// 全局变量
+const IC98_PATH = './data/ic98.json',
+      RELDATA_PATH = './data/relData.json',
+      COPY_PATH = './data/copy.json';
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -61,9 +29,9 @@ router.get('/', function(req, res, next) {
 router.get('/56top', function(req, res, next) {
     // 清空原有数据
     fs.writeFileSync(RELDATA_PATH, JSON.stringify([]));
-    get56Top().then(function(source) {
+    task56Top.get56Top().then(function(source) {
         fs.writeFileSync(RELDATA_PATH, JSON.stringify(source));
-        var _res = unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
+        var _res = _.unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
         var _length = _res.length;
         res.send({
             message: '56Top的物流信息已经抓取完成!',
@@ -83,14 +51,14 @@ router.get('/ic98/init', function(req, res, next) {
         promises.push(i)
     }
     promises = promises.map(function(item) {
-        return getIC98Init(item).then(function(source) {
+        return taskIC98.getIC98Init(item).then(function(source) {
             fs.writeFileSync(IC98_PATH, JSON.stringify(source));
         });
     });
     // 用all依次发出所有请求
     Promise.all(promises).then(function() {
-        var _res = unique(JSON.parse(fs.readFileSync(IC98_PATH)));
-        ic98_length = _res.length;
+        var _res = _.unique(JSON.parse(fs.readFileSync(IC98_PATH)));
+        var ic98_length = _res.length;
         res.send({
             message: 'ic98的物流信息初步抓取完成!',
             length: ic98_length,
@@ -103,12 +71,12 @@ router.get('/ic98/init', function(req, res, next) {
 router.get('/ic98/deep', function(req, res, next) {
     // 通过all依次发出所有请求
     var promises = JSON.parse(fs.readFileSync(IC98_PATH)).map(function(item) {
-        return getIC98Deep(item).then(function(source){
+        return taskIC98.getIC98Deep(item).then(function(source){
             fs.writeFileSync(RELDATA_PATH, JSON.stringify(source))
         })
     });
     Promise.all(promises).then(function(){
-        var _res = unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
+        var _res = _.unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
         var _length = _res.length;
         res.send({
             message: 'ic98的物流信息深度抓取完成!',
@@ -120,8 +88,9 @@ router.get('/ic98/deep', function(req, res, next) {
     });
 });
 
+/* GET available data */
 router.get('/data', function(req, res, next) {
-    var source = unique(JSON.parse(fs.readFileSync(COPY_PATH)));
+    var source = _.unique(JSON.parse(fs.readFileSync(COPY_PATH)));
     var _length = source.length;
     res.send({
         message: '物流信息抓取完成！',
@@ -131,11 +100,36 @@ router.get('/data', function(req, res, next) {
 });
 
 router.get('/latest', function(req, res, next) {
-    var _promises = [nextStep, lastStep].map(function(item) {
+    var _promises = [firstStep, nextStep].map(function(item) {
         return item();
     });
+    var firstStep = function() {
+        return new Promise(function(resolve, reject) {
+            fs.writeFileSync(RELDATA_PATH, JSON.stringify([]));    // 清空
+            var promises = JSON.parse(fs.readFileSync(IC98_PATH)).map(function(item) {
+                return taskIC98.getIC98Deep(item).then(function(source) {
+                    fs.writeFileSync(RELDATA_PATH, JSON.stringify(source));
+                });
+            });
+            Promise.all(promises).then(function() {
+                resolve();
+            }).catch(function(err){
+                reject(err)
+            });
+        });
+    };
+    var nextStep = function() {
+        return new Promise(function(resolve, reject) {
+            task56Top.get56Top().then(function(source) {
+                fs.writeFileSync(RELDATA_PATH, JSON.stringify(source));
+                resolve();
+            }).catch(function(err) {
+                reject(err);
+            });
+        });
+    };
     Promise.all(_promises).then(function() {
-        var _res = unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
+        var _res = _.unique(JSON.parse(fs.readFileSync(RELDATA_PATH)));
         var _length = _res.length;
         res.send({
             message: 'ic98的物流信息深度抓取完成!',
@@ -144,170 +138,14 @@ router.get('/latest', function(req, res, next) {
         });
     }).catch(function(err) {
         console.log(err);
-    })
+    });
 });
 
-var firstStep = function() {
-    return new Promise(function(resolve, reject) {
-        fs.writeFileSync(IC98_PATH, JSON.stringify([]));     // 清空
-        var promises = [];
-        for (var i = 1; i < 68; i++ ) {
-            promises.push(i)
-        }
-        promises = promises.map(function(item) {
-            return getIC98Init(item).then(function(source) {
-                fs.writeFileSync(IC98_PATH, JSON.stringify(source));
-            });
-        });
-        Promise.all(promises).then(function() {
-            resolve();
-        }).catch(function(err) {
-            reject(err);
-        });
-    });
-}
-
-var nextStep = function() {
-    return new Promise(function(resolve, reject) {
-        fs.writeFileSync(RELDATA_PATH, JSON.stringify([]));    // 清空
-        var promises = JSON.parse(fs.readFileSync(IC98_PATH)).map(function(item) {
-            return getIC98Deep(item).then(function(source) {
-                fs.writeFileSync(RELDATA_PATH, JSON.stringify(source));
-            });
-        });
-        Promise.all(promises).then(function() {
-            resolve();
-        }).catch(function(err){
-            reject(err)
-        });
-    });
-}
-
-var lastStep = function() {
-    return new Promise(function(resolve, reject) {
-        get56Top().then(function(source) {
-            fs.writeFileSync(RELDATA_PATH, JSON.stringify(source));
-            resolve();
-        }).catch(function(err) {
-            reject(err);
-        });
-    });
-}
-
-function get56Top() {
-    return new Promise(function(resolve, reject) {
-        console.log('开始爬取 http://www.56top.com ...');
-        request('http://www.56top.com/queryLogisticsCompanyInfoPage.jspx', function(err, response, body) {
-            if(!err && response.statusCode === 200){
-                var $ = cheerio.load(body); //当前$相当于整个body的选择器
-                var contentList = $('.contentList');
-                var dataList = [];
-
-                for (var i = 0; i < contentList.length; i++) {
-                    var content = {};
-                    content.company = contentList.eq(i).find('h1').text();
-                    content.address = contentList.eq(i).find('.companyAdd').text();
-                    content.name = contentList.eq(i).find('h4').text().split('主营线路')[0];
-                    var info = contentList.eq(i).find('.placeInfo').text().split('\n');
-
-                    var temp = [];
-                    info.forEach(function(item) {
-                        if (!!item) temp.push(item.replace(/(^\s+)|(\s+$)/g,""));
-                    })
-                    info = temp.splice(0,4);
-                    content.info = {
-                        mobilephone: info[0],
-                        telphone: info[2],
-                        fax: info[3],
-                        email: '',
-                    };
-                    dataList.push(content);
-                }
-                var source = JSON.parse(fs.readFileSync(RELDATA_PATH));
-                source = source.concat(dataList);
-                resolve(source);
-            } else {
-                reject(err);
-            }
-        })
-    });
-}
-
-function getIC98Init(page) {
-    return new Promise(function(resolve, reject) {
-        var url = 'http://www.ic98.com/company/v4604/' + page + '/';
-    	var superagent = install(_request);
-        console.log('开始获取' + url + '...');
-    	superagent.get(url).charset('gb2312').end(function(err,response) {
-    		if (err) {
-                reject(err);
-            } else {
-                var $ = cheerio.load(response.text, {decodeEntities: false});
-                var contentList = $('.products.f');
-                var dataList = [];
-                for (var i = 0; i < contentList.length; i++) {
-                    var content = {};
-                    var _node = contentList.eq(i).find('.tab_ss1_l').find('a');
-                    if (_node.text().indexOf('物流')>0 && _node.attr('href').indexOf('ic98')>0) {
-                        content.company = _node.text();
-                        content.link = _node.attr('href');
-                        dataList.push(content);
-                    }
-                }
-                // 写入到 json中
-                var source = JSON.parse(fs.readFileSync(IC98_PATH));
-                source = source.concat(dataList);
-                resolve(source);
-            }
-    	});
-    });
-}
-
-function getIC98Deep(item) {
-    return new Promise(function(resolve, reject) {
-        var obj = {};
-        obj.company = item.company;
-        var superagent = install(_request);
-        console.log('开始爬取' + item.link + '...');
-        superagent.get(item.link).charset('gb2312').end(function(err,response) {
-            // 一旦出现错误结束操作并对外抛出异常
-            if (err) {
-                reject(err)
-            }
-            else if(response) {
-                var $ = cheerio.load(response.text, {decodeEntities: false});
-                if (item.link.indexOf('http://www.ic98.com/') >= 0) {
-                    var content = $('.m_xq_mid').find('ul').eq(0).find('li');
-                    obj.address = content.eq(4).text().split('：')[1];
-                    var _tel = content.eq(2).find('img').attr('src');
-                    obj.info = {
-                        telphone: '',
-                        fax: '',
-                        mobilephone: '',
-                        email: content.eq(5).text().split('：')[1]
-                    };
-                    obj.name = content.eq(0).find('strong').text();
-                } else {
-                    var content = $('.mp7');
-                    obj.address = content.eq(0).text();
-                    obj.info = {
-                        telphone: content.eq(1).text(),
-                        fax: content.eq(2).text(),
-                        mobilephone: content.eq(4).text(),
-                        email: ''
-                    }
-                    obj.name = $('.mp4').find('.mtext').text();
-                }
-                // 在原有的基础上组合成新的json数据
-                var source = JSON.parse(fs.readFileSync(RELDATA_PATH));
-                source.push(obj);
-                // 结束并对外传递
-                resolve(source);
-            } else {
-                // .... 什么都不做
-            }
-        });
-    });
-}
+// 爬取58同城的数据
+router.get('/58', function(req, res, next) {
+    task58.getURL('http://hz.58.com/meirongjianshen/26805168042568x.shtml?adtype=1&entinfo=26805168042568_q&adact=3&psid=165205214192838976039119286&iuType=q_2&ClickID=3&PGTID=0d302639-0004-f03c-2731-3b0f6bca1f30&role=4', '美甲').then(function(data) {
+        console.log(data.replace(/(^\s+)|(\s+$)/g,""))
+    })
+})
 
 module.exports = router;

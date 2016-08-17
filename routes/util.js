@@ -16,4 +16,8 @@ module.exports = {
         })
         return result
     },
+    // 去空格和占位符
+    trim: function(str) {
+        return str.replace(/(^\s+)|(\s+$)/g,"");
+    }
 }

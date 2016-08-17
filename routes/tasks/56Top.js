@@ -8,7 +8,8 @@ var fs = require('fs'),
     cheerio = require('cheerio'),
     iconv = require('iconv-lite'),
     install = require('superagent-charset'),
-    request = require('superagent');
+    request = require('superagent'),
+    _ = require('../util');
 
 const RELDATA_PATH = './data/relData.json';
 
@@ -30,7 +31,7 @@ var get56Top = function() {
 
                     var temp = [];
                     info.forEach(function(item) {
-                        if (!!item) temp.push(item.replace(/(^\s+)|(\s+$)/g,""));
+                        if (!!item) temp.push( _.trim(item));
                     })
                     info = temp.splice(0,4);
                     content.info = {

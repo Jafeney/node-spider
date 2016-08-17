@@ -143,9 +143,13 @@ router.get('/latest', function(req, res, next) {
 
 // 爬取58同城的数据
 router.get('/58', function(req, res, next) {
-    task58.getURL('http://hz.58.com/meirongjianshen/26805168042568x.shtml?adtype=1&entinfo=26805168042568_q&adact=3&psid=165205214192838976039119286&iuType=q_2&ClickID=3&PGTID=0d302639-0004-f03c-2731-3b0f6bca1f30&role=4', '美甲').then(function(data) {
-        console.log(data.replace(/(^\s+)|(\s+$)/g,""))
-    })
+    var { getBasicInfo, getCompeleteInfo, saveImg } = task58;
+    getBasicInfo('http://hz.58.com/meirongjianshen/26805168042568x.shtml?adtype=1&entinfo=26805168042568_q&adact=3&psid=165205214192838976039119286&iuType=q_2&ClickID=3&PGTID=0d302639-0004-f03c-2731-3b0f6bca1f30&role=4', '美甲')
+    .then(getCompeleteInfo)
+    .then(saveImg)
+    .catch(function(err){
+        console.log(err)
+    });
 })
 
 module.exports = router;

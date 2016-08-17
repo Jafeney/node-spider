@@ -147,6 +147,14 @@ router.get('/58', function(req, res, next) {
     getBasicInfo('http://hz.58.com/meirongjianshen/26805168042568x.shtml?adtype=1&entinfo=26805168042568_q&adact=3&psid=165205214192838976039119286&iuType=q_2&ClickID=3&PGTID=0d302639-0004-f03c-2731-3b0f6bca1f30&role=4', '美甲')
     .then(getCompeleteInfo)
     .then(saveImg)
+    .then(function(source) {
+        var _port = process.env.PORT || '8888';
+        source.phone = 'http://' + req.hostname + ( _port!==80 ? ':' + _port : '' ) + source.img.replace('./public','');
+        res.json({
+            success: true,
+            data: source
+        })
+    })
     .catch(function(err){
         console.log(err)
     });

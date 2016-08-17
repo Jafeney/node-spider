@@ -12,7 +12,7 @@ var fs = require('fs'),
     gm = require('gm'),
     _ = require('../util');
 
-const IMG_PATH = './data/img/';
+const IMG_PATH = './public/images/';
 
 /*获取所有的城市信息*/
 var getAllCitys = function() {
@@ -63,14 +63,16 @@ var getCompeleteInfo = function(source) {
     return new Promise(function(resolve, reject) {
         request(source.url, function(err, res, body) {
             if (!err && res.statusCode === 200) {
-                var $ = cheerio.load(body), img = '';
+                var $ = cheerio.load(body), phone = '', contact = '';
                 try {
-                    img = $('.basicMsgListo>li').eq(3).find('img').attr('src')
+                    phone = $('.basicMsgListo>li').eq(3).find('img').attr('src');
+                    contact = $('.basicMsgListo>li').eq(1).text().replace(/[\r\n\s]|['联系人：']/g,'');
                 } catch(err) {
                     reject(err)
                 }
-                if (!img) reject()
-                source = Object.assign({img: img}, source)
+                if (!phone) reject()
+                source = Object.assign({phone: phone, contact: contact}, source)
+                delete source.url;
                 resolve(source)
             }
         })
@@ -80,7 +82,7 @@ var getCompeleteInfo = function(source) {
 /*保存图片到本地*/
 var saveImg = function(source) {
     return new Promise(function(resolve, reject) {
-        http.get(source.img, function(res) {
+        http.get(source.phone, function(res) {
             res.setEncoding('binary');
             var imageData = '';
             res.on('data', function(data) {
@@ -93,7 +95,7 @@ var saveImg = function(source) {
                 } catch(err) {
                     reject(err)
                 }
-                source.img = path;
+                source.phone = path;
                 resolve(source)
             })
         })
